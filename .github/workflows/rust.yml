@@ -20,10 +20,13 @@ jobs:
         include:
           - os: windows-latest
             artifact: target/release/lsuart.exe
+            asset_name: lsuart-windows-amd64.exe
           - os: ubuntu-latest
             artifact: target/release/lsuart
+            asset_name: lsuart-linux-amd64
           - os: macos-latest
             artifact: target/release/lsuart
+            asset_name: lsuart-macos-amd64
 
     runs-on: ${{ matrix.os }}
 
@@ -44,6 +47,15 @@ jobs:
       with:
         name: ${{ runner.os }}-binary
         path: ${{ matrix.artifact }}
+    - name: Rename binary
+      run: |
+        mkdir -p renamed
+        cp ${{ matrix.artifact }} renamed/${{ matrix.asset_name }}
+    - name: Upload renamed artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ runner.os }}-renamed
+        path: renamed/${{ matrix.asset_name }}
 
   release:
     needs: build
@@ -55,12 +67,13 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts
+        pattern: '*-renamed'
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: artifacts/**/*
-        name: Release ${{ github.sha }}
-        tag_name: v${{ github.run_number }}
+        name: build.${{ github.run_number }}
+        tag_name: build.${{ github.run_number }}
         draft: false
         prerelease: false
       env:
