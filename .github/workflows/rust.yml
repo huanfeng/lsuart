@@ -63,6 +63,12 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
+    - uses: actions/checkout@v4
+    - name: Get Version
+      id: get_version
+      run: |
+        VERSION=$(grep '^version = ' Cargo.toml | cut -d '"' -f2)
+        echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
@@ -72,8 +78,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: artifacts/**/*
-        name: build.${{ github.run_number }}
-        tag_name: build.${{ github.run_number }}
+        name: v${{ steps.get_version.outputs.VERSION }}
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
         draft: false
         prerelease: false
       env:
