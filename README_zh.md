@@ -17,13 +17,24 @@ lsuart 是一个基于 Rust 的串口获取程序。该程序使用了 `serialpo
 ## 安装
 
 1. 确保已安装 Rust 开发环境
-2. 克隆项目并编译：
+2. Windows 下可直接通过 Scoop 安装：
+
+```powershell
+scoop bucket add huanfeng https://github.com/huanfeng/scoop-bucket
+scoop install huanfeng/lsuart
+```
+
+3. 或者克隆项目并编译：
 
 ```bash
 git clone https://github.com/huanfeng/lsuart.git
 cd lsuart
 cargo build --release
 ```
+
+## 发布
+
+推送形如 `v0.1.0` 的 tag 后，会触发 GitHub Release 工作流。该工作流会构建发布包、上传 Release 资产，并向 `huanfeng/scoop-bucket` 发送 `repository_dispatch` 事件以自动更新 Scoop manifest。
 
 ## 使用方法
 

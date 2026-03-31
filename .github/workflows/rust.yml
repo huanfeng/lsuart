@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 on:
   push:
@@ -6,81 +6,66 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# 添加必要的权限
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Check
+        run: cargo check --all-targets --all-features
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --all-features
+
   build:
+    needs: check
     strategy:
       matrix:
         include:
           - os: windows-latest
             artifact: target/release/lsuart.exe
-            asset_name: lsuart-windows-amd64.exe
           - os: ubuntu-latest
             artifact: target/release/lsuart
-            asset_name: lsuart-linux-amd64
           - os: macos-latest
             artifact: target/release/lsuart
-            asset_name: lsuart-macos-amd64
 
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    # 添加 Ubuntu 依赖安装步骤
-    - name: Install Linux dependencies
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libudev-dev pkg-config
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Build Release
-      run: cargo build --verbose --release
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ runner.os }}-binary
-        path: ${{ matrix.artifact }}
-    - name: Rename binary
-      run: |
-        mkdir -p renamed
-        cp ${{ matrix.artifact }} renamed/${{ matrix.asset_name }}
-    - name: Upload renamed artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ runner.os }}-renamed
-        path: renamed/${{ matrix.asset_name }}
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Build Release
+        run: cargo build --verbose --release
 
-    steps:
-    - uses: actions/checkout@v4
-    - name: Get Version
-      id: get_version
-      run: |
-        VERSION=$(grep '^version = ' Cargo.toml | cut -d '"' -f2)
-        echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        pattern: '*-renamed'
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: artifacts/**/*
-        name: v${{ steps.get_version.outputs.VERSION }}-build.${{ github.run_number }}
-        tag_name: v${{ steps.get_version.outputs.VERSION }}-build.${{ github.run_number }}
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-binary
+          path: ${{ matrix.artifact }}

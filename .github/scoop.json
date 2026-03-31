@@ -1,0 +1,7 @@
+{
+  "name": "lsuart",
+  "bin": "lsuart.exe",
+  "description": "Command-line serial port lister",
+  "homepage": "https://github.com/huanfeng/lsuart",
+  "license": "MIT"
+}

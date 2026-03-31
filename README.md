@@ -17,13 +17,24 @@ This project uses the following technical frameworks and libraries:
 ## Installation
 
 1. Ensure Rust development environment is installed
-2. Clone and build the project:
+2. Install with Scoop on Windows:
+
+```powershell
+scoop bucket add huanfeng https://github.com/huanfeng/scoop-bucket
+scoop install huanfeng/lsuart
+```
+
+3. Or clone and build the project:
 
 ```bash
 git clone https://github.com/huanfeng/lsuart.git
 cd lsuart
 cargo build --release
 ```
+
+## Release
+
+Push a tag like `v0.1.0` to trigger the GitHub Release workflow. The workflow builds release archives, publishes the release assets, and sends a `repository_dispatch` event to `huanfeng/scoop-bucket` to update the Scoop manifest automatically.
 
 ## Usage
 

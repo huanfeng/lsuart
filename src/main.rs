@@ -28,8 +28,8 @@ struct Args {
 
 fn extract_number(name: &str) -> Option<u32> {
     name.chars()
-        .skip_while(|c| !c.is_digit(10))
-        .take_while(|c| c.is_digit(10))
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
         .collect::<String>()
         .parse()
         .ok()
@@ -51,9 +51,8 @@ fn main() {
 
     match serialport::available_ports() {
         Ok(mut ports) => {
-            match args.sort {
-                1 => ports.sort_by(port_sort),
-                _ => {} // 默认排序，不做任何操作
+            if args.sort == 1 {
+                ports.sort_by(port_sort);
             }
 
             let filtered_ports: Vec<_> = ports

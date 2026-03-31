@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.artifact }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows-x86_64
+          - os: ubuntu-latest
+            artifact: linux-x86_64
+          - os: macos-latest
+            artifact: macos-aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync Cargo.toml version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - << 'PY'
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          path = "Cargo.toml"
+          with open(path, "r", encoding="utf-8") as f:
+              content = f.read()
+          pattern = r'(?m)^(\s*version\s*=\s*)\"[^\"]+\"(\s*)$'
+          match = re.search(pattern, content)
+          if not match:
+              raise SystemExit("Cargo.toml version line not found.")
+          updated = re.sub(
+              pattern,
+              rf'\1"{version}"\2',
+              content,
+              count=1,
+          )
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(updated)
+          PY
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zipName = "lsuart-$env:VERSION-${{ matrix.artifact }}.zip"
+          Compress-Archive -Path target\release\lsuart.exe -DestinationPath "dist\$zipName"
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar -C target/release -czf "dist/lsuart-${VERSION}-${{ matrix.artifact }}.tar.gz" lsuart
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.artifact }}
+          path: dist/*
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          files: release/**/*
+
+  notify-scoop-bucket:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scoop.json
+          sparse-checkout-cone-mode: false
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Read scoop.json
+        id: scoop
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "name=$(jq -r .name .github/scoop.json)" >> "$GITHUB_OUTPUT"
+          echo "bin=$(jq -r .bin .github/scoop.json)" >> "$GITHUB_OUTPUT"
+          echo "description=$(jq -r .description .github/scoop.json)" >> "$GITHUB_OUTPUT"
+          echo "homepage=$(jq -r .homepage .github/scoop.json)" >> "$GITHUB_OUTPUT"
+          echo "license=$(jq -r .license .github/scoop.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Send repository_dispatch to scoop-bucket
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          APP: ${{ steps.scoop.outputs.name }}
+          ASSET_NAME: "${{ steps.scoop.outputs.name }}-${{ steps.version.outputs.version }}-windows-x86_64.zip"
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/huanfeng/scoop-bucket/dispatches" \
+            -d "$(jq -n \
+              --arg app "$APP" \
+              --arg repo "${{ github.repository }}" \
+              --arg version "$VERSION" \
+              --arg asset_name "$ASSET_NAME" \
+              --arg bin "${{ steps.scoop.outputs.bin }}" \
+              --arg description "${{ steps.scoop.outputs.description }}" \
+              --arg homepage "${{ steps.scoop.outputs.homepage }}" \
+              --arg license "${{ steps.scoop.outputs.license }}" \
+              '{
+                event_type: "update-scoop-manifest",
+                client_payload: {
+                  app: $app,
+                  repo: $repo,
+                  version: $version,
+                  asset_name: $asset_name,
+                  bin: $bin,
+                  description: $description,
+                  homepage: $homepage,
+                  license: $license
+                }
+              }'
+            )"
